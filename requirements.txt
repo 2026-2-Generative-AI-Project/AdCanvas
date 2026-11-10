@@ -1,0 +1,14 @@
+# --- 필수 (mock 백엔드 + 테스트까지 이것만으로 동작) ---
+pillow>=10.0
+numpy>=1.24
+python-dotenv>=1.0
+
+# --- 백엔드별 선택 설치 ---
+# sdxl (로컬 GPU, VRAM 8GB+)
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   pip install diffusers transformers accelerate safetensors
+# openai (gpt-image-2.5)
+#   pip install openai            # .env 파일에서 OPENAI_API_KEY 로드
+
+# --- 테스트 ---
+pytest>=7.0
