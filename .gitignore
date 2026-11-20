@@ -1,9 +1,0 @@
-__pycache__/
-*.pyc
-.venv*/
-outputs/
-.pytest_cache/
-*.safetensors
-.env
-.env.*
-!.env.example
