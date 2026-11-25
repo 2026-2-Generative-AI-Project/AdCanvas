@@ -4,7 +4,7 @@
 원본 음식은 그대로 보존하고, 배경만 요청에 맞게 새로 만듭니다.
 
 ```
-사진 → ① 누끼(음식 분리) → ② VLM(요청 해석) → ③ 배경 생성 → ④ 원본 음식 재합성 → 광고 이미지 + 광고 문구
+사진 → ① Segmentation(음식 분리) → ② VLM(요청 해석) → ③ 배경 생성 → ④ 원본 음식 재합성 → 광고 이미지 + 광고 문구
 ```
 
 ## 진행 상황 (11/25)
@@ -12,7 +12,7 @@
 | 항목 | 상태 |
 |---|---|
 | 메인 노트북 (배포용) | 1~5 전부 작성 완료, 서버로 프론트와 연결 |
-| 서브 노트북 (평가용) | 누끼·VLM·생성 평가 작성 완료. 각 팀이 실행해서 보고서·발표 자료에 반영 |
+| 서브 노트북 (평가용) | Segmentation·VLM·생성 평가 작성 완료. 각 팀이 실행해서 보고서·발표 자료에 반영 |
 | 웹 화면 ↔ 서버 연결 | 배포 사이트에서 생성까지 확인 |
 | 다음 작업 | 사용자 보정(박스로 그릇 지정), 광고 문구 형식 정리, 시연 영상 녹화 |
 
@@ -21,7 +21,7 @@
 | 레포 | 내용 |
 |---|---|
 | **AdCanvas** (이 레포) | 메인 노트북(배포용), 서브 노트북(평가용) |
-| [Segmentation-SAM](https://github.com/2026-2-Generative-AI-Project/Segmentation-SAM) | 누끼: 라벨링, SAM 2.1 파인튜닝, 실험 |
+| [Segmentation-SAM](https://github.com/2026-2-Generative-AI-Project/Segmentation-SAM) | Segmentation: 라벨링, SAM 2.1 파인튜닝, 실험 |
 | [VLM](https://github.com/2026-2-Generative-AI-Project/VLM) | 요청 해석: Qwen2.5-VL 파인튜닝 |
 | [AdCanvas-Frontend](https://github.com/2026-2-Generative-AI-Project/AdCanvas-Frontend) | 웹 화면 (React, Vercel) |
 
@@ -37,11 +37,11 @@
 | 섹션 | 담당 | 서버용 함수 |
 |---|---|---|
 | 0. 설치 | 공통 | |
-| 1. 누끼 | 누끼팀 | `nukki(image, product_name)` → `nukki_out` |
+| 1. Segmentation | Segmentation팀 | `nukki(image, product_name)` → `nukki_out` |
 | 2. VLM (요청 해석) | VLM팀 | `vlm(nukki_out, form_data)` → `vlm_out` |
 | 3. 배경 생성 | 생성팀 | |
 | 4. 원본 음식 재합성 | 생성팀 | `generate(nukki_out, vlm_out)` → `final_out` |
-| 5. 서버 | 누끼팀 | `POST /generate`에서 위 세 함수를 차례로 호출 |
+| 5. 서버 | Segmentation팀 | `POST /generate`에서 위 세 함수를 차례로 호출 |
 
 ### 실행 방법 (서버 켜기)
 1. Google Colab에서 `AdCanvas_main.ipynb` 열기 → 런타임 유형 **T4 GPU**
@@ -68,7 +68,7 @@
 
 ## 단계별 설명
 
-### ① 누끼 (Segmentation) — 황시은, 정지은
+### ① Segmentation (누끼 따기)
 사진에서 그릇과 음식을 **그릇 하나씩** 분리하고, 광고에 쓸 그릇을 고릅니다.
 
 | 단계 | 모델 | 역할 |
@@ -97,13 +97,13 @@
 
 - 예정: 자동 선택이 틀렸을 때 사용자가 **박스로 그릇을 지정**하는 보정 기능
 
-### ② VLM (요청 해석) — VLM팀
+### ② VLM (요청 해석)
 - 모델: Qwen2.5-VL-3B-Instruct + LoRA 파인튜닝 어댑터
-- 입력: 누끼 결과(회색 배경) + 사용자 입력(상품명, 가게명, 요청, 대상 고객, 분위기, 비율)
+- 입력: Segmentation 결과(회색 배경) + 사용자 입력(상품명, 가게명, 요청, 대상 고객, 분위기, 비율)
 - 출력: 배경 생성 프롬프트(영어), 네거티브 프롬프트, 광고 문구(한국어), 전략 설명, 비율
 - 자세한 내용: [VLM](https://github.com/2026-2-Generative-AI-Project/VLM)
 
-### ③ 배경 생성 / ④ 원본 음식 재합성 — 생성팀
+### ③ 배경 생성 / ④ 원본 음식 재합성
 - 배경 생성: OpenAI 이미지 편집 API. 음식 영역은 보호하고 배경만 생성 (비율별 캔버스)
 - 재합성: 생성된 배경 위에 **원본 음식 픽셀을 그대로** 다시 붙임
 - 평가: 음식 픽셀 보존율, CLIP Score, 생성 시간 (서브 노트북)
@@ -116,7 +116,7 @@
 ## 사용 모델과 라이선스
 | 모델 | 단계 | 라이선스 |
 |---|---|---|
-| Grounding DINO tiny (IDEA-Research) | 누끼 | Apache-2.0 |
-| SAM 2.1 hiera-small (Meta) | 누끼 | Apache-2.0 |
+| Grounding DINO tiny (IDEA-Research) | Segmentation | Apache-2.0 |
+| SAM 2.1 hiera-small (Meta) | Segmentation | Apache-2.0 |
 | Qwen2.5-VL-3B-Instruct (Alibaba) | VLM | Qwen Research License (확인 필요) |
 | OpenAI 이미지 편집 API | 배경 생성 | OpenAI 이용 약관 |
