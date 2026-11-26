@@ -98,10 +98,26 @@
 - 예정: 자동 선택이 틀렸을 때 사용자가 **박스로 그릇을 지정**하는 보정 기능
 
 ### ② VLM (요청 해석)
-- 모델: Qwen2.5-VL-3B-Instruct + LoRA 파인튜닝 어댑터
-- 입력: Segmentation 결과(회색 배경) + 사용자 입력(상품명, 가게명, 요청, 대상 고객, 분위기, 비율)
-- 출력: 배경 생성 프롬프트(영어), 네거티브 프롬프트, 광고 문구(한국어), 전략 설명, 비율
-- 자세한 내용: [VLM](https://github.com/2026-2-Generative-AI-Project/VLM)
+누끼 음식 이미지와 사용자 입력을 함께 분석해, **3단계 배경 생성 프롬프트**와 **한국어 광고 문구**를 구조화된 JSON(`vlm_out`)으로 생성합니다.
+
+| 단계 | 모델 | 역할 |
+|---|---|---|
+| 전처리 | 없음 (직접 짠 코드) | 투명 배경 누끼(PNG)를 긴 변 512로 줄이고 중립 회색 `RGB(128, 128, 128)` 배경에 합성해 PNG로 저장 (학습과 같은 방식, 압축 손실 없음) |
+| 이미지·요청 이해 | Qwen2.5-VL-3B-Instruct + LoRA 파인튜닝 (`merge_and_unload`) | 음식 종류와 사용자 조건을 해석해 배경 묘사·광고 문구·전략 근거를 JSON으로 출력 (`max_pixels=262144`, `do_sample=False`) |
+| 후처리 · 예외 방어 | 없음 (직접 짠 코드) | 음식 아래 그림자·자연광 문구와 `duplicate food` 네거티브 보정, 파싱 실패나 필수 값 누락 시 `fallback` 대체 |
+
+- 입력: `nukki_out`(누끼 이미지) + `form_data`(상품명, 가게명, 요청, 대상 고객, 분위기, 비율)
+- 출력 (`vlm_out`): 배경 프롬프트(`sd_prompt`, 영어), 네거티브 프롬프트(`negative_prompt`), 광고 문구(`ad_copy`, 한국어), 전략 설명(`strategy_reason`), 비율(`aspect_ratio`)
+- 다음 단계로는 텍스트(`vlm_out`)만 넘어가고, 배경 생성은 1단계의 원본 사진과 마스크를 사용
+- 학습 데이터: 음식 사진 100장, 요청 240개 (손·인형이 함께 찍힌 사진, 여러 음식, 빈 입력·무의미한 입력 등 예외 상황 포함)
+- 자세한 내용 (학습 데이터 구축 · LoRA 파인튜닝): [VLM](https://github.com/2026-2-Generative-AI-Project/VLM)
+
+**프롬프트 생성 및 후처리 규칙** (서버용 `vlm()`)
+1. **음식 중복 묘사 금지**: 4단계에서 원본 음식 픽셀을 그대로 재합성하므로 `sd_prompt`에는 테이블·소품·조명 등 배경만 묘사하고 메인 음식은 기술하지 않음
+2. **그림자 · 중복 방지 보정**: 모델 출력에 없으면 `sd_prompt`에 `soft contact shadow beneath the center object, natural directional lighting`(음식 아래 부드러운 그림자, 자연광), `negative_prompt`에 `duplicate food, extra serving of the main dish`를 자동 추가
+3. **조건별 규칙 준수**: 빈 입력은 가게명·대상 고객 `미입력`, 분위기 `AI 추천`으로 채움. 가게명이 `미입력`이면 상호 임의 창작 금지, 대상 고객이 `미입력`이면 이미지와 요청으로 추론, 분위기가 `AI 추천`이면 최적 분위기를 선택해 `strategy_reason`에 근거 기재
+4. **비율 고정**: `aspect_ratio`는 모델 출력과 관계없이 사용자가 고른 비율(1:1, 4:5, 9:16)로 고정
+5. **예외 방어**: JSON 파싱에 실패하거나 필수 3개 키(`sd_prompt`, `ad_copy`, `aspect_ratio`)가 비어 있으면 기본값(`fallback`)으로 대체해 서비스 중단 방지
 
 ### ③ 배경 생성 / ④ 원본 음식 재합성
 - 배경 생성: OpenAI 이미지 편집 API. 음식 영역은 보호하고 배경만 생성 (비율별 캔버스)
@@ -118,5 +134,5 @@
 |---|---|---|
 | Grounding DINO tiny (IDEA-Research) | Segmentation | Apache-2.0 |
 | SAM 2.1 hiera-small (Meta) | Segmentation | Apache-2.0 |
-| Qwen2.5-VL-3B-Instruct (Alibaba) | VLM | Qwen Research License (확인 필요) |
+| Qwen2.5-VL-3B-Instruct (Alibaba) | VLM | Qwen Research License (연구·비상업 용도만 허용, 상업 이용은 별도 라이선스 필요) |
 | OpenAI 이미지 편집 API | 배경 생성 | OpenAI 이용 약관 |
