@@ -59,11 +59,13 @@
 4. 끝나면 **런타임 연결 해제 및 삭제** (GPU 사용, 생성 1번마다 OpenAI 요금 발생)
 
 필요한 것
+- Colab 보안 비밀 이름: `NGROK_AUTHTOKEN`(ngrok 토큰), `NGROK_DOMAIN`(고정 주소)
 - 팀 내부 실행: 팀 비공개 드라이브의 AdCanvas_nukki 폴더를 내 드라이브에 바로가기로 추가 (가중치, LoRA 어댑터, API 키)
 - 외부에서 실행: 위 폴더 없이도 실행됩니다. 파인튜닝 가중치가 없으면 원래 SAM 2.1과 베이스 Qwen2.5-VL로 동작합니다. OpenAI API 키와 ngrok 토큰은 본인 것을 Colab 보안 비밀에 넣어 주세요.
 - 음식 사진과 정답 마스크는 팀원이 직접 촬영한 개인 사진이라 공개하지 않습니다.
   
 ### 서비스 구조
+![AdCanvas 시스템 구조](results/pipeline/architecture.png)
 ```
 웹 화면(Vercel) ──POST /generate──▶ ngrok(고정 주소) ──▶ 코랩 GPU (메인 노트북, FastAPI)
 ```
