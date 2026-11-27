@@ -7,14 +7,8 @@
 사진 → ① Segmentation(음식 분리) → ② VLM(요청 해석) → ③ 배경 생성 → ④ 원본 음식 재합성 → 광고 이미지 + 광고 문구
 ```
 
-## 진행 상황 (11/25)
-
-| 항목 | 상태 |
-|---|---|
-| 메인 노트북 (배포용) | 1~5 전부 작성 완료, 서버로 프론트와 연결 |
-| 서브 노트북 (평가용) | Segmentation·VLM·생성 평가 작성 완료. 각 팀이 실행해서 보고서·발표 자료에 반영 |
-| 웹 화면 ↔ 서버 연결 | 배포 사이트에서 생성까지 확인 |
-| 다음 작업 | 사용자 보정(박스로 그릇 지정), 광고 문구 형식 정리, 시연 영상 녹화 |
+- 데모 사이트: https://adcanvas-nine.vercel.app/ (서버를 켜 둔 동안 동작)
+- 팀: 투투스 (민서연, 신채은, 윤지원, 정지은, 황시은)
 
 ## 레포 구성
 
@@ -23,6 +17,7 @@
 | **AdCanvas** (이 레포) | 메인 노트북(배포용), 서브 노트북(평가용) |
 | [Segmentation-SAM](https://github.com/2026-2-Generative-AI-Project/Segmentation-SAM) | Segmentation: 라벨링, SAM 2.1 파인튜닝, 실험 |
 | [VLM](https://github.com/2026-2-Generative-AI-Project/VLM) | 요청 해석: Qwen2.5-VL 파인튜닝 |
+| [background-generation](https://github.com/2026-2-Generative-AI-Project/background-generation) | 배경 생성 실험: SDXL·OpenAI 백엔드 비교 (`adgen.py`) |
 | [AdCanvas-Frontend](https://github.com/2026-2-Generative-AI-Project/AdCanvas-Frontend) | 웹 화면 (React, Vercel) |
 
 ## 노트북
@@ -37,7 +32,7 @@
 | 섹션 | 담당 | 서버용 함수 |
 |---|---|---|
 | 0. 설치 | 공통 | |
-| 1. Segmentation | Segmentation팀 | `nukki(image, product_name)` → `nukki_out` |
+| 1. Segmentation | Segmentation팀 | `nukki(image, product_name, boxes)` → `nukki_out` |
 | 2. VLM (요청 해석) | VLM팀 | `vlm(nukki_out, form_data)` → `vlm_out` |
 | 3. 배경 생성 | 생성팀 | |
 | 4. 원본 음식 재합성 | 생성팀 | `generate(nukki_out, vlm_out)` → `final_out` |
@@ -52,7 +47,7 @@
 
 필요한 것
 - 공유받은 `AdCanvas_nukki` 폴더를 내 드라이브에 **바로가기로 추가** (가중치, LoRA 어댑터, API 키가 이 경로에서 열림)
-- 코랩 보안 비밀 `NGROK_AUTHTOKEN` (서버 담당 계정. 고정 주소가 이 계정에 묶여 있음)
+- 코랩 보안 비밀 `NGROK_AUTHTOKEN`, `NGROK_DOMAIN` (서버 담당 계정의 토큰과 고정 주소)
 
 ### 서비스 구조
 ```
@@ -62,13 +57,13 @@
 | 요청 (form-data) | 응답 |
 |---|---|
 | `image`, `product_name`, `prompt`, `store_name`, `target`, `mood`, `ratio`(1:1, 4:5, 9:16) | `200` `{imageUrl, copy: {headline, body, hashtags}}` |
-| | `422` 그릇을 못 찾음 · `500` 서버 오류 · `501` 단계 함수 없음 |
+| `boxes` (선택): 사용자가 그린 박스 `[[x0, y0, x1, y1], ...]`, 원본 사진 픽셀 좌표 | `400` boxes 형식 오류 · `422` 그릇을 못 찾음 (웹 화면이 박스 지정으로 이동) · `500` 서버 오류 · `501` 단계 함수 없음 |
 
-- 서버 주소는 레포에 적지 않음 (공개 레포라 누구나 호출하면 요금 발생). Vercel 환경 변수와 지라에만 기록
+- 서버 주소는 레포에 적지 않음. Vercel 환경 변수와 지라에만 기록
 
 ## 단계별 설명
 
-### ① Segmentation (누끼 따기)
+### ① Segmentation (음식 분리)
 사진에서 그릇과 음식을 **그릇 하나씩** 분리하고, 광고에 쓸 그릇을 고릅니다.
 
 | 단계 | 모델 | 역할 |
@@ -78,7 +73,7 @@
 | 후처리 | 직접 작성 | 조각 정리, 구멍 채우기, 중복 그릇 제거 |
 | 그릇 고르기 (서버) | 직접 작성 | 메인 그릇 자동 선택 (아래) |
 
-- 출력: 음식 마스크(흰색 = 음식, 원본과 같은 크기), 투명 배경 누끼(RGBA)
+- 출력: 음식 마스크(흰색 = 음식, 원본과 같은 크기), 투명 배경 cutout(RGBA)
 - 성능 (test 20장, 전체 파이프라인): IoU **0.906**, 경계 BF **0.827** (파인튜닝 전 0.853 / 0.749)
 - 자세한 내용: [Segmentation-SAM v1.0](https://github.com/2026-2-Generative-AI-Project/Segmentation-SAM/releases/tag/v1.0)
 
@@ -95,18 +90,18 @@
 | 메인 + 작은 반찬 | 메인만 |
 | 세트·정식 (상품명에 해당 단어) | 사진 끝에 안 걸린 그릇 전부 |
 
-- 예정: 자동 선택이 틀렸을 때 사용자가 **박스로 그릇을 지정**하는 보정 기능
+**사용자 박스 보정**: 자동 선택이 틀리거나 그릇을 못 찾으면 사용자가 박스를 그려 다시 생성합니다. 박스 안에 찾아 둔 그릇이 있으면 그 그릇을 쓰고, 없으면 그 영역을 SAM으로 새로 분리합니다.
 
 ### ② VLM (요청 해석)
-누끼 음식 이미지와 사용자 입력을 함께 분석해, **3단계 배경 생성 프롬프트**와 **한국어 광고 문구**를 구조화된 JSON(`vlm_out`)으로 생성합니다.
+Segmentation 결과(음식 이미지)와 사용자 입력을 함께 분석해, **3단계 배경 생성 프롬프트**와 **한국어 광고 문구**를 구조화된 JSON(`vlm_out`)으로 생성합니다.
 
 | 단계 | 모델 | 역할 |
 |---|---|---|
-| 전처리 | 없음 (직접 짠 코드) | 투명 배경 누끼(PNG)를 긴 변 512로 줄이고 중립 회색 `RGB(128, 128, 128)` 배경에 합성해 PNG로 저장 (학습과 같은 방식, 압축 손실 없음) |
+| 전처리 | 없음 (직접 짠 코드) | 투명 배경 cutout(PNG)을 긴 변 512로 줄이고 중립 회색 `RGB(128, 128, 128)` 배경에 합성해 PNG로 저장 (학습과 같은 방식, 압축 손실 없음) |
 | 이미지·요청 이해 | Qwen2.5-VL-3B-Instruct + LoRA 파인튜닝 (`merge_and_unload`) | 음식 종류와 사용자 조건을 해석해 배경 묘사·광고 문구·전략 근거를 JSON으로 출력 (`max_pixels=262144`, `do_sample=False`) |
 | 후처리 · 예외 방어 | 없음 (직접 짠 코드) | 음식 아래 그림자·자연광 문구와 `duplicate food` 네거티브 보정, 파싱 실패나 필수 값 누락 시 `fallback` 대체 |
 
-- 입력: `nukki_out`(누끼 이미지) + `form_data`(상품명, 가게명, 요청, 대상 고객, 분위기, 비율)
+- 입력: `nukki_out`(Segmentation 결과) + `form_data`(상품명, 가게명, 요청, 대상 고객, 분위기, 비율)
 - 출력 (`vlm_out`): 배경 프롬프트(`sd_prompt`, 영어), 네거티브 프롬프트(`negative_prompt`), 광고 문구(`ad_copy`, 한국어), 전략 설명(`strategy_reason`), 비율(`aspect_ratio`)
 - 다음 단계로는 텍스트(`vlm_out`)만 넘어가고, 배경 생성은 1단계의 원본 사진과 마스크를 사용
 - 학습 데이터: 음식 사진 100장, 요청 240개 (손·인형이 함께 찍힌 사진, 여러 음식, 빈 입력·무의미한 입력 등 예외 상황 포함)
@@ -120,9 +115,12 @@
 5. **예외 방어**: JSON 파싱에 실패하거나 필수 3개 키(`sd_prompt`, `ad_copy`, `aspect_ratio`)가 비어 있으면 기본값(`fallback`)으로 대체해 서비스 중단 방지
 
 ### ③ 배경 생성 / ④ 원본 음식 재합성
-- 배경 생성: OpenAI 이미지 편집 API. 음식 영역은 보호하고 배경만 생성 (비율별 캔버스)
-- 재합성: 생성된 배경 위에 **원본 음식 픽셀을 그대로** 다시 붙임
+- 배경 생성: OpenAI 이미지 편집 API. 음식 보호 마스크 + 바닥 쪽 그림자 영역을 두고 배경만 생성 (비율별 캔버스)
+- 재합성: 생성된 배경 위에 **원본 음식 픽셀을 그대로** 다시 붙임 (원본 해상도 유지)
+  - 생성 모델이 음식 위치·크기를 바꿔 그리는 경우가 있어, 생성 결과에서 음식 위치를 특징점 매칭으로 찾아 그 자리에 붙임
+  - 사진 끝에 잘린 그릇은 잘린 쪽으로 갈수록 서서히 투명하게, 외곽은 부드럽게 처리
 - 평가: 음식 픽셀 보존율, CLIP Score, 생성 시간 (서브 노트북)
+- 실험 코드 (SDXL·OpenAI 비교): [background-generation](https://github.com/2026-2-Generative-AI-Project/background-generation)
 
 ## 데이터와 보안
 - 사진, 정답 마스크, 학습 가중치, API 키는 **드라이브에만** 보관 (레포 Public)
